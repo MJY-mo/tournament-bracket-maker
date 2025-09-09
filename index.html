@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像放り込みトーナメント表メーカー</title>
+    <link rel="icon" href="favicon9.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --tile-bg-color: #4A5568;
+            --tile-border-color: #E2E8F0;
+            --tile-border-width: 2px;
+            --tile-border-radius: 8px;
+            --tile-width: 150px;
+            --tile-height: 50px;
+            --font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            --font-size: 16px;
+            --font-weight: 400;
+            --font-style: 'normal';
+            --text-shadow: 'none';
+            --line-color: #A0AEC0;
+            --line-width: 2px;
+            --round-gap: 80px;
+            --bg-opacity: 1;
+            --tournament-bg-image: none;
+        }
+        body {
+            font-family: var(--font-family);
+        }
+        .participant-tile {
+            background-color: var(--tile-bg-color);
+            border-color: var(--tile-border-color);
+            border-width: var(--tile-border-width);
+            border-radius: var(--tile-border-radius);
+            width: var(--tile-width);
+            min-height: var(--tile-height);
+            font-size: var(--font-size);
+            font-weight: var(--font-weight);
+            position: relative;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        .tile-bg-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            transition: background-color 0.3s ease;
+        }
+        .participant-tile:hover .tile-bg-overlay {
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+
+        .tile-img-window {
+            flex-shrink: 0;
+            width: calc(var(--tile-height) - 8px);
+            height: calc(var(--tile-height) - 8px);
+            margin: 4px;
+        }
+        .tile-img-window img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .tile-name-container {
+            position: relative;
+            z-index: 1;
+            flex-grow: 1;
+        }
+
+        .sortable-ghost {
+            opacity: 0.4;
+            background: #4a5568;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .name-input, .name-span {
+            position: relative;
+            z-index: 1;
+            color: white;
+            font-style: var(--font-style);
+            text-shadow: var(--text-shadow);
+        }
+        .name-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            text-align: center;
+            outline: none;
+        }
+        .name-span {
+            width: 100%;
+            text-align: center;
+            padding: 0 0.5rem;
+            display: block; /* Ensures span takes up width */
+        }
+
+        .winner-tile.empty {
+             background-color: rgba(255,255,255,0.1);
+             border-style: dashed;
+        }
+        #tournament-field {
+            position: relative;
+            overflow: auto;
+            z-index: 0;
+        }
+        #tournament-field::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: var(--tournament-bg-image);
+            background-size: cover;
+            background-position: center;
+            opacity: var(--bg-opacity);
+            z-index: -1;
+        }
+        #tournament-wrapper {
+            position: relative;
+            transform-origin: top left;
+        }
+        #tournament-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+        #tournament-tiles-container {
+            position: relative;
+            z-index: 1;
+        }
+        .tournament-tile {
+            position: absolute;
+        }
+        .x-button {
+            display: none;
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 20px;
+            height: 20px;
+            background-color: red;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 20px;
+            cursor: pointer;
+            z-index: 2;
+        }
+        .participant-tile:hover .x-button-list { display: block; }
+        .tournament-tile:hover .x-button-winner { display: block; }
+        .seed-badge {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background-color: #FBBF24; /* amber-400 */
+            color: #1F2937; /* gray-800 */
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 1px 6px;
+            border-radius: 9999px;
+            z-index: 2; /* Above the overlay */
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #2D3748; /* gray-800 */
+            padding: 2rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            max-width: 90%;
+            width: 500px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
+
+    <!-- トップバー -->
+    <header class="bg-gray-800 p-2 flex items-center justify-center space-x-4 shadow-lg flex-shrink-0">
+        <button id="fullscreen-btn" title="全画面表示" class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition"><i class="fas fa-expand"></i></button>
+        <button id="export-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition" data-lang="export">画像出力</button>
+        <button id="help-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition" data-lang="help">操作説明</button>
+        <button id="save-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition" data-lang="save">保存</button>
+        <label class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition cursor-pointer" data-lang="load">
+            呼び出し <input type="file" id="load-input" class="hidden">
+        </label>
+        <button id="language-toggle-btn" class="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition"></button>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <div class="flex flex-grow overflow-hidden">
+        <!-- 左パネル -->
+        <aside id="settings-panel" class="w-64 bg-gray-800 p-4 space-y-4 overflow-y-auto no-scrollbar flex-shrink-0">
+            <div class="space-y-2 mb-4 border-b border-gray-700 pb-4">
+                <button id="view-toggle-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition disabled:bg-gray-500 disabled:cursor-not-allowed"></button>
+            </div>
+            <!-- 参加者設定 -->
+            <div id="participant-settings">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="tournament_format">トーナメント形式</label>
+                        <select id="tournament-layout" class="w-full bg-gray-700 rounded p-1 text-sm">
+                            <option value="normal" data-lang="format_normal">通常版</option>
+                            <option value="aligned" data-lang="format_aligned">タイル整列版</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs mb-1 mt-4" data-lang="image_display_method">画像表示方法の選択</label>
+                        <select id="tile-image-display" class="w-full bg-gray-700 rounded p-1 text-sm">
+                            <option value="background" data-lang="image_display_bg">背景 (最大化)</option>
+                            <option value="left" data-lang="image_display_left">左に表示</option>
+                            <option value="right" data-lang="image_display_right">右に表示</option>
+                        </select>
+                    </div>
+
+                    <p class="text-sm font-bold mt-4" data-lang="participant_name_settings">参加者名の設定</p>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="size">サイズ</label>
+                        <input type="range" id="font-size" min="8" max="32" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="font">フォント</label>
+                        <select id="font-family" class="w-full bg-gray-700 rounded p-1 text-sm">
+                            <option value="'Inter', 'Noto Sans JP', sans-serif">Inter / Noto Sans JP</option>
+                            <option value="serif">Serif</option>
+                            <option value="monospace">Monospace</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-2 text-sm">
+                        <label><input type="checkbox" id="font-bold"> <span data-lang="font_bold">太字</span></label>
+                        <label><input type="checkbox" id="font-italic"> <span data-lang="font_italic">斜体</span></label>
+                        <label><input type="checkbox" id="text-shadow"> <span data-lang="font_shadow">影</span></label>
+                    </div>
+                    
+                    <p class="text-sm font-bold mt-4" data-lang="tile_settings">タイルの設定</p>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="size">サイズ</label>
+                        <div class="flex space-x-2">
+                            <input type="range" id="tile-width" min="100" max="300" class="w-1/2">
+                            <input type="range" id="tile-height" min="30" max="100" class="w-1/2">
+                        </div>
+                    </div>
+                    <div class="flex space-x-2 items-center">
+                        <label class="text-xs" data-lang="tile_color">タイルの色</label>
+                        <input type="color" id="tile-bg-color" class="h-8 w-16">
+                    </div>
+
+                     <div>
+                        <label class="block text-xs mb-1" data-lang="border_width">枠線の太さ</label>
+                        <input type="range" id="tile-border-width" min="0" max="10" class="w-full">
+                    </div>
+                     <div class="flex space-x-2 items-center">
+                        <label class="text-xs" data-lang="border_color">枠線の色</label>
+                        <input type="color" id="tile-border-color" class="h-8 w-16">
+                    </div>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="corner_radius">角の丸み</label>
+                        <input type="range" id="tile-border-radius" min="0" max="25" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <!-- トーナメント設定 -->
+            <div id="tournament-settings" class="hidden">
+                <div class="space-y-3">
+                    <p class="text-sm font-bold" data-lang="display_scale">表示の縮尺</p>
+                    <div>
+                        <input type="range" id="zoom-slider" min="0.2" max="1.5" step="0.05" class="w-full">
+                    </div>
+                    <p class="text-sm font-bold mt-4" data-lang="bg_image">背景画像</p>
+                    <div id="bg-drop-area" class="border-2 border-dashed border-gray-500 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-700">
+                        <p class="text-xs" data-lang="drop_image_here">ここに画像をドロップ</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="opacity">透過度</label>
+                        <input type="range" id="bg-opacity" min="0" max="1" step="0.05" class="w-full">
+                    </div>
+                
+                    <p class="text-sm font-bold mt-4" data-lang="line_settings">進行線の設定</p>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="line_width">太さ</label>
+                        <input type="range" id="line-width" min="1" max="10" class="w-full">
+                    </div>
+                    <div class="flex space-x-2 items-center">
+                        <label class="text-xs" data-lang="color">色</label>
+                        <input type="color" id="line-color" class="h-8 w-16">
+                    </div>
+
+                     <p class="text-sm font-bold mt-4" data-lang="layout">レイアウト</p>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="round_gap">ラウンド間の間隔</label>
+                        <input type="range"id="round-gap" min="20" max="200" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-xs mb-1" data-lang="vertical_gap">上下の間隔</label>
+                        <input type="range" id="vertical-gap" min="0" max="100" class="w-full">
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- メインフィールド -->
+        <main class="flex-grow bg-gray-900 flex flex-col items-center justify-center overflow-hidden p-4 relative">
+            <!-- 参加者登録フィールド -->
+            <div id="participant-field" class="w-full h-full flex flex-col p-4 rounded-lg bg-black bg-opacity-20">
+                <div id="participant-drop-area" class="w-full flex-none h-24 border-2 border-dashed border-gray-600 rounded-lg flex items-center justify-center text-gray-500 mb-4">
+                    <p data-lang="drop_image_here_main">ここに画像をドラッグ＆ドロップ</p>
+                </div>
+                <div id="participant-list-wrapper" class="w-full flex-grow overflow-y-auto no-scrollbar bg-black bg-opacity-30 rounded-lg">
+                     <div id="participant-list" class="flex flex-row flex-wrap justify-center gap-2 p-2">
+                        <!-- 参加者タイルがここに追加される -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- トーナメント表示フィールド -->
+            <div id="tournament-field" class="w-full h-full hidden relative">
+                <div id="tournament-wrapper">
+                    <canvas id="tournament-canvas"></canvas>
+                    <div id="tournament-tiles-container"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- モーダルコンテナ -->
+    <div id="modal-container"></div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- グローバル変数と状態管理 ---
+    let state = {
+        participants: [],
+        settings: {
+            language: 'ja',
+            // Participant Settings
+            tournamentLayout: 'normal',
+            tileWidth: 150, tileHeight: 50, tileBgColor: '#4A5568',
+            tileImageDisplayMode: 'background',
+            tileBorderWidth: 2, tileBorderColor: '#E2E8F0', tileBorderRadius: 8,
+            fontSize: 16, fontFamily: "'Inter', 'Noto Sans JP', sans-serif", fontWeight: 400,
+            fontStyle: 'normal', textShadow: 'none',
+            // Tournament Settings
+            bgImage: '', bgOpacity: 1,
+            lineWidth: 2, lineColor: '#A0AEC0', roundGap: 80,
+            verticalGap: 20,
+            zoom: 1,
+        },
+        tournamentStructure: null,
+        currentView: 'participant-field'
+    };
+
+    const MAX_PARTICIPANTS = 64;
+
+    const translations = {
+        ja: {
+            export: "画像出力", help: "操作説明", save: "保存", load: "呼び出し",
+            toggle_to_en: "English",
+            create_tournament: "トーナメント表作成",
+            back_to_participants: "参加者登録に戻る",
+            tournament_format: "トーナメント形式",
+            format_normal: "通常版",
+            format_aligned: "タイル整列版",
+            image_display_method: "画像表示方法の選択",
+            image_display_bg: "背景 (最大化)",
+            image_display_left: "左に表示",
+            image_display_right: "右に表示",
+            participant_name_settings: "参加者名の設定",
+            size: "サイズ",
+            font: "フォント",
+            font_bold: "太字",
+            font_italic: "斜体",
+            font_shadow: "影",
+            tile_settings: "タイルの設定",
+            tile_color: "タイルの色",
+            border_width: "枠線の太さ",
+            border_color: "枠線の色",
+            corner_radius: "角の丸み",
+            display_scale: "表示の縮尺",
+            bg_image: "背景画像",
+            drop_image_here: "ここに画像をドロップ",
+            opacity: "透過度",
+            line_settings: "進行線の設定",
+            line_width: "太さ",
+            color: "色",
+            layout: "レイアウト",
+            round_gap: "ラウンド間の間隔",
+            vertical_gap: "上下の間隔",
+            drop_image_here_main: "ここに画像をドラッグ＆ドロップ",
+            help_modal_title: "操作説明",
+            help_participants_title: "参加者登録:",
+            help_participants_1: "画面中央の点線エリアに画像ファイルをドラッグ＆ドロップして参加者を追加します。",
+            help_participants_2: "タイルをクリックすると名前を編集できます。",
+            help_participants_3: "タイルの右上（カーソルを合わせたとき）の×ボタンで参加者を削除できます。",
+            help_participants_4: "タイルをドラッグ＆ドロップで順番を入れ替えられます。リストの上がシード順位が高くなります。",
+            help_tournament_title: "トーナメント表:",
+            help_tournament_1: "「トーナメント表作成」ボタンで表を生成します。",
+            help_tournament_2: "対戦する参加者タイルのどちらかをダブルクリックすると、勝者として次のラウンドに進みます。",
+            help_tournament_3: "進んだ先の勝者タイル（元参加者）にマウスオーバーすると現れる×ボタンで、その勝ち上がりをキャンセルできます。",
+            help_tournament_4: "1回戦の勝者が決まる前であれば、参加者タイルをドラッグ＆ドロップして場所を入れ替えられます。",
+            close: "閉じる",
+            export_modal_title: "画像として出力",
+            file_name: "ファイル名",
+            export_format: "拡張子",
+            export_button: "出力",
+            cancel: "キャンセル",
+            seed: "シード",
+        },
+        en: {
+            export: "Export Image", help: "Help", save: "Save", load: "Load",
+            toggle_to_ja: "日本語",
+            create_tournament: "Create Tournament",
+            back_to_participants: "Back to Participants",
+            tournament_format: "Tournament Format",
+            format_normal: "Normal Version",
+            format_aligned: "Aligned Tile Version",
+            image_display_method: "Image Display Method",
+            image_display_bg: "Background (Fit)",
+            image_display_left: "Show on Left",
+            image_display_right: "Show on Right",
+            participant_name_settings: "Participant Name Settings",
+            size: "Size",
+            font: "Font",
+            font_bold: "Bold",
+            font_italic: "Italic",
+            font_shadow: "Shadow",
+            tile_settings: "Tile Settings",
+            tile_color: "Tile Color",
+            border_width: "Border Width",
+            border_color: "Border Color",
+            corner_radius: "Corner Radius",
+            display_scale: "Display Scale",
+            bg_image: "Background Image",
+            drop_image_here: "Drop image here",
+            opacity: "Opacity",
+            line_settings: "Connector Line Settings",
+            line_width: "Width",
+            color: "Color",
+            layout: "Layout",
+            round_gap: "Gap between rounds",
+            vertical_gap: "Vertical Gap",
+            drop_image_here_main: "Drag & Drop images here",
+            help_modal_title: "How to Use",
+            help_participants_title: "Participant Registration:",
+            help_participants_1: "Drag and drop image files into the dotted area in the center of the screen to add participants.",
+            help_participants_2: "Click on a tile to edit the name.",
+            help_participants_3: "Click the 'x' button on the top right of a tile (on hover) to remove a participant.",
+            help_participants_4: "Drag and drop tiles to reorder them. Participants at the top of the list are given higher seed priority.",
+            help_tournament_title: "Tournament Bracket:",
+            help_tournament_1: "Generate the bracket with the 'Create Tournament' button.",
+            help_tournament_2: "Double-click on one of the competing participant's tiles to advance them as the winner.",
+            help_tournament_3: "Click the 'x' button that appears on hover over a winner's tile to cancel that win.",
+            help_tournament_4: "Before any first-round winners are decided, you can drag and drop participant tiles to swap their positions.",
+            close: "Close",
+            export_modal_title: "Export as Image",
+            file_name: "File Name",
+            export_format: "Format",
+            export_button: "Export",
+            cancel: "Cancel",
+            seed: "Seed",
+        }
+    };
+
+    // --- DOM要素の取得 ---
+    const participantDropArea = document.getElementById('participant-drop-area');
+    const participantList = document.getElementById('participant-list');
+    const participantField = document.getElementById('participant-field');
+    const tournamentField = document.getElementById('tournament-field');
+    const participantSettings = document.getElementById('participant-settings');
+    const tournamentSettings = document.getElementById('tournament-settings');
+    const tournamentCanvas = document.getElementById('tournament-canvas');
+    const tournamentTilesContainer = document.getElementById('tournament-tiles-container');
+    const bgDropArea = document.getElementById('bg-drop-area');
+    const modalContainer = document.getElementById('modal-container');
+    
+    // --- 初期化処理 ---
+    loadState();
+    applySettingsToDOM();
+    updateCSSVariables();
+    updateLanguage();
+    renderParticipantList();
+    new Sortable(participantList, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        onEnd: (evt) => {
+            const movedItem = state.participants.splice(evt.oldIndex, 1)[0];
+            state.participants.splice(evt.newIndex, 0, movedItem);
+            renderParticipantList();
+        }
+    });
+
+    // --- イベントリスナー ---
+    const viewToggleBtn = document.getElementById('view-toggle-btn');
+
+    viewToggleBtn.addEventListener('click', () => {
+        if (state.currentView === 'participant-field') {
+            if (state.participants.length < 2) return;
+            generateTournament();
+            switchView('tournament-field');
+        } else {
+            switchView('participant-field');
+        }
+    });
+
+    // ファイルドロップ (参加者)
+    participantDropArea.addEventListener('dragover', (e) => e.preventDefault());
+    participantDropArea.addEventListener('drop', handleParticipantDrop);
+    
+    // ファイルドロップ (背景)
+    bgDropArea.addEventListener('dragover', (e) => e.preventDefault());
+    bgDropArea.addEventListener('drop', handleBackgroundDrop);
+
+    // トップバー
+    document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
+    document.getElementById('export-btn').addEventListener('click', showExportModal);
+    document.getElementById('help-btn').addEventListener('click', showHelpModal);
+    document.getElementById('save-btn').addEventListener('click', saveStateToFile);
+    document.getElementById('load-input').addEventListener('change', loadStateFromFile);
+    document.getElementById('language-toggle-btn').addEventListener('click', () => {
+        state.settings.language = state.settings.language === 'ja' ? 'en' : 'ja';
+        updateLanguage();
+        saveState();
+    });
+
+
+    // 設定パネル
+    setupSettingListeners();
+    
+    // --- 状態管理関数 ---
+    function saveState() {
+        try {
+            const stateToSave = {
+                settings: { ...state.settings, bgImage: '' }, 
+                participants: state.participants.map(({ id, name }) => ({ id, name })), 
+            };
+            localStorage.setItem('tournamentMakerState', JSON.stringify(stateToSave));
+        } catch (error) {
+            console.error("localStorageへの状態保存に失敗しました:", error);
+        }
+    }
+
+    function loadState() {
+        const savedState = localStorage.getItem('tournamentMakerState');
+        if (savedState) {
+             try {
+                const parsedState = JSON.parse(savedState);
+                if (parsedState.settings) {
+                    Object.assign(state.settings, parsedState.settings);
+                }
+                if (parsedState.participants) {
+                    state.participants = parsedState.participants;
+                }
+            } catch (error) {
+                 console.error("localStorageからの状態読み込みに失敗しました:", error);
+                 localStorage.removeItem('tournamentMakerState'); 
+            }
+        }
+    }
+
+    function saveStateToFile() {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "tournament_data.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+    
+    function loadStateFromFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const loadedState = JSON.parse(e.target.result);
+                state = loadedState;
+                applySettingsToDOM();
+                updateCSSVariables();
+                 updateLanguage();
+                if(state.currentView === 'participant-field' || !state.currentView) {
+                    renderParticipantList();
+                    switchView('participant-field');
+                } else {
+                    renderTournament();
+                    switchView('tournament-field');
+                }
+            } catch (error) {
+                console.error("Error loading file:", error);
+                alert("ファイルの読み込みに失敗しました。");
+            }
+        };
+        reader.readAsText(file);
+    }
+    
+    // --- UI更新関数 ---
+    function t(key) {
+        return translations[state.settings.language][key] || key;
+    }
+
+    function updateLanguage() {
+        document.documentElement.lang = state.settings.language;
+        document.querySelectorAll('[data-lang]').forEach(el => {
+            const key = el.dataset.lang;
+            // Handle buttons with icons
+            const icon = el.querySelector('i');
+            if(icon) {
+                 el.innerHTML = `${icon.outerHTML} ${t(key)}`;
+            } else if (el.tagName === 'LABEL' && el.childNodes.length > 1) {
+                 // Handle labels like <label><input..> <span>text</span></label>
+                 const span = el.querySelector('span');
+                 if(span) {
+                     span.textContent = t(key);
+                 } else {
+                    const textNode = Array.from(el.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '');
+                     if (textNode) {
+                        textNode.textContent = t(key);
+                     }
+                 }
+            }
+             else {
+                el.textContent = t(key);
+            }
+        });
+        
+        const langBtn = document.getElementById('language-toggle-btn');
+        langBtn.textContent = state.settings.language === 'ja' ? t('toggle_to_en') : t('toggle_to_ja');
+
+        updateViewToggleButton(); // Update button text on language change
+    }
+
+    function updateViewToggleButton() {
+        const btn = document.getElementById('view-toggle-btn');
+        if (!btn) return;
+
+        if (state.currentView === 'participant-field') {
+            btn.textContent = t('create_tournament');
+            btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            btn.disabled = state.participants.length < 2;
+        } else {
+            btn.textContent = t('back_to_participants');
+            btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            btn.classList.add('bg-red-600', 'hover:bg-red-700');
+            btn.disabled = false;
+        }
+    }
+
+    function switchView(view) {
+        state.currentView = view;
+        if (view === 'participant-field') {
+            participantField.classList.remove('hidden');
+            tournamentField.classList.add('hidden');
+            participantSettings.classList.remove('hidden');
+            tournamentSettings.classList.add('hidden');
+        } else {
+            participantField.classList.add('hidden');
+            tournamentField.classList.remove('hidden');
+            participantSettings.classList.add('hidden');
+            tournamentSettings.classList.remove('hidden');
+            setTimeout(renderTournament, 50);
+        }
+        updateViewToggleButton();
+    }
+    
+    // --- 参加者関連の関数 ---
+    function handleParticipantDrop(e) {
+        e.preventDefault();
+        const files = [...e.dataTransfer.files].filter(file => file.type.startsWith('image/'));
+        if (state.participants.length + files.length > MAX_PARTICIPANTS) {
+            alert(`参加者の最大数(${MAX_PARTICIPANTS}人)を超えています。`);
+            return;
+        }
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const newParticipant = {
+                    id: Date.now() + Math.random(),
+                    name: file.name.split('.')[0],
+                    imgSrc: event.target.result,
+                };
+                state.participants.push(newParticipant);
+                renderParticipantList();
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function populateTileContent(tile, participant, isListTile = false) {
+        tile.innerHTML = ''; // Clear existing
+        if (!participant) {
+            tile.classList.add('winner-tile', 'empty');
+            return;
+        }
+    
+        const displayMode = state.settings.tileImageDisplayMode;
+        
+        const nameElement = isListTile ? document.createElement('input') : document.createElement('span');
+        if (isListTile) {
+            nameElement.type = 'text';
+            nameElement.className = 'name-input';
+            nameElement.value = participant.name;
+            nameElement.addEventListener('change', (e) => {
+                const p = state.participants.find(par => par.id == participant.id);
+                if(p) p.name = e.target.value;
+            });
+        } else {
+            nameElement.className = 'name-span';
+            nameElement.textContent = participant.name;
+        }
+    
+        if (displayMode === 'background') {
+            if (participant.imgSrc) {
+                tile.style.backgroundImage = `url(${participant.imgSrc})`;
+                tile.style.backgroundSize = 'cover';
+                tile.style.backgroundPosition = 'center';
+            }
+            tile.style.justifyContent = 'center';
+    
+            const overlay = document.createElement('div');
+            overlay.className = 'tile-bg-overlay';
+            
+            const nameContainer = document.createElement('div');
+            nameContainer.className = 'tile-name-container';
+            nameContainer.appendChild(nameElement);
+    
+            tile.appendChild(overlay);
+            tile.appendChild(nameContainer);
+        } else { // 'left' or 'right'
+            tile.style.backgroundImage = '';
+            tile.style.flexDirection = (displayMode === 'right') ? 'row-reverse' : 'row';
+    
+            const imgContainer = document.createElement('div');
+            imgContainer.className = 'tile-img-window';
+            const img = document.createElement('img');
+            if (participant.imgSrc) {
+                img.src = participant.imgSrc;
+            }
+            imgContainer.appendChild(img);
+    
+            const nameContainer = document.createElement('div');
+            nameContainer.className = 'tile-name-container';
+            nameContainer.appendChild(nameElement);
+            
+            tile.appendChild(imgContainer);
+            tile.appendChild(nameContainer);
+        }
+    }
+
+    function updateSeeds() {
+        const numParticipants = state.participants.length;
+        if (numParticipants <= 1) {
+             state.participants.forEach(p => p.isSeed = false);
+             return;
+        }
+        const nextPowerOfTwo = Math.pow(2, Math.ceil(Math.log2(numParticipants)));
+        const numSeeds = nextPowerOfTwo - numParticipants;
+
+        state.participants.forEach((p, index) => {
+            p.isSeed = index < numSeeds;
+        });
+    }
+
+    function renderParticipantList() {
+        participantList.innerHTML = '';
+        updateSeeds();
+        state.participants.forEach(p => {
+            const tile = document.createElement('div');
+            tile.className = 'participant-tile cursor-pointer relative';
+            tile.dataset.id = p.id;
+
+            populateTileContent(tile, p, true);
+            
+            if (p.isSeed) {
+                const seedBadge = document.createElement('div');
+                seedBadge.className = 'seed-badge';
+                seedBadge.textContent = t('seed');
+                tile.appendChild(seedBadge);
+            }
+
+            const deleteBtn = document.createElement('div');
+            deleteBtn.innerHTML = '&times;';
+            deleteBtn.className = 'x-button x-button-list';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                state.participants = state.participants.filter(par => par.id != p.id);
+                renderParticipantList();
+            });
+            
+            tile.appendChild(deleteBtn);
+            participantList.appendChild(tile);
+        });
+        autoAdjustParticipantTileSize();
+        updateViewToggleButton();
+    }
+
+    function autoAdjustParticipantTileSize() {
+        // Placeholder
+    }
+
+    // --- トーナメント関連の関数 ---
+    function generateSeedOrder(n) {
+        if (n <= 1) return [1];
+        if (n === 2) return [1, 2];
+        
+        const prevOrder = generateSeedOrder(n / 2);
+        const newOrder = [];
+        for (const seed of prevOrder) {
+            newOrder.push(seed);
+            newOrder.push(n + 1 - seed);
+        }
+        return newOrder;
+    }
+
+    function generateTournament() {
+        let rankedPlayers = [...state.participants];
+        const tourneySize = Math.pow(2, Math.ceil(Math.log2(rankedPlayers.length)));
+
+        while (rankedPlayers.length < tourneySize) {
+            rankedPlayers.push(null);
+        }
+
+        const seedOrder = generateSeedOrder(tourneySize);
+
+        const finalPlayerList = [];
+        for (const rank of seedOrder) {
+            finalPlayerList.push(rankedPlayers[rank - 1]);
+        }
+
+        state.tournamentStructure = [];
+        let firstRound = [];
+        for (let i = 0; i < tourneySize; i += 2) {
+            firstRound.push({
+                player1: finalPlayerList[i],
+                player2: finalPlayerList[i+1],
+                winner: null
+            });
+        }
+        state.tournamentStructure.push(firstRound);
+        
+        firstRound.forEach(match => {
+            if (match.player1 && !match.player2) match.winner = match.player1;
+            if (!match.player1 && match.player2) match.winner = match.player2;
+        });
+
+        let previousRound = firstRound;
+        while (previousRound.length > 1) {
+            let currentRound = [];
+            for (let i = 0; i < previousRound.length; i += 2) {
+                currentRound.push({
+                    player1: previousRound[i].winner,
+                    player2: previousRound[i+1].winner,
+                    winner: null
+                });
+            }
+            state.tournamentStructure.push(currentRound);
+            previousRound = currentRound;
+        }
+    }
+    
+    function renderTournament() {
+        if (!state.tournamentStructure) return;
+
+        const container = tournamentField;
+        const ctx = tournamentCanvas.getContext('2d');
+        const tilesContainer = tournamentTilesContainer;
+        const tournamentWrapper = document.getElementById('tournament-wrapper');
+        
+        const containerRect = container.getBoundingClientRect();
+        if (containerRect.width === 0 || containerRect.height === 0) return;
+
+        tilesContainer.innerHTML = '';
+        
+        const { tileWidth, tileHeight, roundGap, verticalGap, tournamentLayout } = state.settings;
+        const rounds = state.tournamentStructure;
+        const totalRounds = rounds.length;
+        const firstRoundParticipantCount = rounds[0].length * 2;
+        
+        let vSlotHeight = tileHeight + verticalGap;
+        let requiredHeight = firstRoundParticipantCount * vSlotHeight;
+        const requiredWidth = (totalRounds + 1) * tileWidth + totalRounds * roundGap + 40;
+
+        if (tournamentLayout === 'aligned') {
+            const actualPlayerCount = state.participants.length;
+            if(actualPlayerCount > 1){
+                 requiredHeight = actualPlayerCount * tileHeight + (actualPlayerCount - 1) * verticalGap;
+                 vSlotHeight = requiredHeight / actualPlayerCount;
+            } else {
+                 vSlotHeight = tileHeight + verticalGap;
+                 requiredHeight = firstRoundParticipantCount * vSlotHeight;
+            }
+        }
+
+        tournamentWrapper.style.width = `${requiredWidth}px`;
+        tournamentWrapper.style.height = `${requiredHeight}px`;
+        tournamentWrapper.style.transform = `scale(${state.settings.zoom})`;
+
+        tournamentCanvas.width = requiredWidth;
+        tournamentCanvas.height = requiredHeight;
+        tilesContainer.style.width = `${requiredWidth}px`;
+        tilesContainer.style.height = `${requiredHeight}px`;
+
+        ctx.clearRect(0, 0, tournamentCanvas.width, tournamentCanvas.height);
+        ctx.strokeStyle = state.settings.lineColor;
+        ctx.lineWidth = state.settings.lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        const layout = [];
+
+        for (let r = 0; r < totalRounds + 1; r++) {
+            const roundLayout = [];
+            const x = r * (tileWidth + roundGap) + 20;
+            if (r === 0) {
+                const itemCount = rounds[0].length * 2;
+                for (let i = 0; i < itemCount; i++) {
+                    const y = (i * vSlotHeight) + (vSlotHeight / 2);
+                    roundLayout.push({ x, y });
+                }
+            } else {
+                const prevRoundLayout = layout[r - 1];
+                const itemCount = prevRoundLayout.length / 2;
+                for (let i = 0; i < itemCount; i++) {
+                    const prevY1 = prevRoundLayout[i * 2].y;
+                    const prevY2 = prevRoundLayout[i * 2 + 1].y;
+                    const y = (prevY1 + prevY2) / 2;
+                    roundLayout.push({ x, y });
+                }
+            }
+            layout.push(roundLayout);
+        }
+        
+        if (rounds[0]) {
+            if (state.settings.tournamentLayout === 'aligned') {
+                const playerSlots = [];
+                rounds[0].forEach((match, m) => {
+                    if (match.player1) playerSlots.push({ slot: layout[0][m * 2]});
+                    if (match.player2) playerSlots.push({ slot: layout[0][m * 2 + 1]});
+                });
+
+                const numPlayers = playerSlots.length;
+                if (numPlayers > 1) {
+                    const newVSlotHeight = (numPlayers * tileHeight + (numPlayers - 1) * verticalGap) / numPlayers;
+                    playerSlots.forEach((p, i) => {
+                        p.slot.y = (i * newVSlotHeight) + (tileHeight / 2);
+                    });
+                }
+                rounds[0].forEach((match, m) => {
+                    if (!match.player1) layout[0][m * 2].isByeSlot = true;
+                    if (!match.player2) layout[0][m * 2 + 1].isByeSlot = true;
+                });
+
+            } else { // 'normal' version
+                rounds[0].forEach((match, m) => {
+                    const pos1 = layout[0][m * 2];
+                    const pos2 = layout[0][m * 2 + 1];
+                    if (match.player1 && !match.player2) {
+                        pos1.y = (pos1.y + pos2.y) / 2;
+                        pos2.isByeSlot = true;
+                    }
+                    if (!match.player1 && match.player2) {
+                        pos2.y = (pos1.y + pos2.y) / 2;
+                        pos1.isByeSlot = true;
+                    }
+                });
+            }
+
+            for (let r = 1; r < totalRounds + 1; r++) {
+                layout[r].forEach((pos, m) => {
+                    if (state.settings.tournamentLayout === 'aligned') {
+                        const startSlotIndex = m * Math.pow(2, r);
+                        const endSlotIndex = (m + 1) * Math.pow(2, r) - 1;
+                        
+                        const relevantSlots = layout[0].slice(startSlotIndex, endSlotIndex + 1);
+                        const actualPlayerSlots = relevantSlots.filter(s => !s.isByeSlot);
+                        
+                        if (actualPlayerSlots.length > 0) {
+                            const minY = actualPlayerSlots[0].y;
+                            const maxY = actualPlayerSlots[actualPlayerSlots.length - 1].y;
+                            pos.y = (minY + maxY) / 2;
+                        } else {
+                             const prevRoundLayout = layout[r-1];
+                             pos.y = (prevRoundLayout[m * 2].y + prevRoundLayout[m * 2 + 1].y) / 2;
+                        }
+                    } else { // Normal layout calculation
+                        const prevRoundLayout = layout[r-1];
+                        pos.y = (prevRoundLayout[m * 2].y + prevRoundLayout[m * 2 + 1].y) / 2;
+                    }
+                });
+            }
+            
+            rounds[0].forEach((match, m) => {
+                const winnerPos = layout[1][m];
+                if (match.player1 && !match.player2) {
+                    winnerPos.isAutoWinnerSlot = true;
+                    winnerPos.seedSourcePos = layout[0][m * 2];
+                }
+                if (!match.player1 && match.player2) {
+                    winnerPos.isAutoWinnerSlot = true;
+                    winnerPos.seedSourcePos = layout[0][m * 2 + 1];
+                }
+            });
+        }
+
+        rounds[0].forEach((match, m) => {
+            const pos1 = layout[0][m * 2];
+            if (!pos1.isByeSlot && match.player1) {
+                tilesContainer.appendChild(createTile(match.player1, pos1.x, pos1.y - tileHeight / 2, 0, m, 'player1'));
+            }
+            const pos2 = layout[0][m * 2 + 1];
+            if (!pos2.isByeSlot && match.player2) {
+                tilesContainer.appendChild(createTile(match.player2, pos2.x, pos2.y - tileHeight / 2, 0, m, 'player2'));
+            }
+        });
+
+        for (let r = 1; r < totalRounds + 1; r++) {
+            const roundData = rounds[r - 1];
+            layout[r].forEach((pos, m) => {
+                if (pos.isAutoWinnerSlot) return;
+                const match = roundData[m];
+                const winner = match ? match.winner : null;
+                tilesContainer.appendChild(createTile(winner, pos.x, pos.y - tileHeight / 2, r, m, 'winner'));
+            });
+        }
+
+        for (let r = 1; r < totalRounds + 1; r++) {
+            layout[r].forEach((toPos, m) => {
+                if (toPos.isAutoWinnerSlot) return;
+
+                let fromPos1 = layout[r - 1][m * 2];
+                let fromPos2 = layout[r - 1][m * 2 + 1];
+
+                const source1 = fromPos1.isAutoWinnerSlot ? fromPos1.seedSourcePos : fromPos1;
+                const source2 = fromPos2.isAutoWinnerSlot ? fromPos2.seedSourcePos : fromPos2;
+                
+                const isByeMatch = (r === 1 && (fromPos1.isByeSlot || fromPos2.isByeSlot));
+
+                ctx.beginPath();
+                const connectorX = toPos.x - roundGap / 2;
+
+                if(isByeMatch) {
+                    const fromPos = fromPos1.isByeSlot ? source2 : source1;
+                     ctx.moveTo(fromPos.x + tileWidth, fromPos.y);
+                     ctx.lineTo(toPos.x, toPos.y);
+                } else {
+                    ctx.moveTo(source1.x + tileWidth, source1.y);
+                    ctx.lineTo(connectorX, source1.y);
+                    
+                    ctx.moveTo(source2.x + tileWidth, source2.y);
+                    ctx.lineTo(connectorX, source2.y);
+                    
+                    ctx.moveTo(connectorX, source1.y);
+                    ctx.lineTo(connectorX, source2.y);
+
+                    ctx.moveTo(connectorX, toPos.y);
+                    ctx.lineTo(toPos.x, toPos.y);
+                }
+                ctx.stroke();
+            });
+        }
+    }
+
+    function createTile(participant, x, y, roundIndex, matchIndex, playerKey) {
+        const tile = document.createElement('div');
+        tile.className = 'participant-tile tournament-tile';
+        tile.style.left = `${x}px`;
+        tile.style.top = `${y}px`;
+        tile.dataset.round = roundIndex;
+        tile.dataset.match = matchIndex;
+        tile.dataset.key = playerKey;
+        
+        populateTileContent(tile, participant, false);
+
+        if (participant) {
+             // Add a unified double-click handler for any tile representing a competitor
+            tile.addEventListener('dblclick', () => {
+                // Find which match this participant is currently competing in.
+                let competingRound = -1;
+                let competingMatch = -1;
+        
+                for (let r = 0; r < state.tournamentStructure.length; r++) {
+                    for (let m = 0; m < state.tournamentStructure[r].length; m++) {
+                        const match = state.tournamentStructure[r][m];
+                        // Check if the participant is a player in a match that hasn't been decided yet.
+                        if (!match.winner && ((match.player1 && match.player1.id === participant.id) || (match.player2 && match.player2.id === participant.id))) {
+                            competingRound = r;
+                            competingMatch = m;
+                            break;
+                        }
+                    }
+                    if (competingRound !== -1) break;
+                }
+        
+                // If no active match is found, do nothing.
+                if (competingRound === -1) {
+                    return;
+                }
+                
+                const matchToUpdate = state.tournamentStructure[competingRound][competingMatch];
+                
+                // Both players must be present to decide a winner.
+                if (!matchToUpdate.player1 || !matchToUpdate.player2) {
+                    return;
+                }
+        
+                // Set the winner and propagate.
+                matchToUpdate.winner = participant;
+                propagateWinner(competingRound, competingMatch);
+                renderTournament();
+            });
+
+            // Add delete button for winners of decided matches
+            if (playerKey === 'winner' && roundIndex > 0) {
+                 const prevRoundIndex = roundIndex - 1;
+                 const prevMatch = state.tournamentStructure[prevRoundIndex][matchIndex];
+                 if(prevMatch && prevMatch.player1 && prevMatch.player2){
+                    const deleteBtn = document.createElement('div');
+                    deleteBtn.innerHTML = '&times;';
+                    deleteBtn.className = 'x-button x-button-winner';
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        clearFutureWinners(prevRoundIndex, matchIndex);
+                        renderTournament();
+                    });
+                    tile.appendChild(deleteBtn);
+                 }
+            }
+        }
+        
+        // Add drag-and-drop only for round 0 tiles
+        if (roundIndex === 0 && participant) {
+             tile.draggable = true;
+             tile.addEventListener('dragstart', (e) => {
+                const hasWinner = state.tournamentStructure[0].some(m => m.winner && (m.player1 && m.player2));
+                if (hasWinner) {
+                    e.preventDefault();
+                    return;
+                }
+                e.dataTransfer.setData('text/plain', JSON.stringify({roundIndex, matchIndex, playerKey}));
+             });
+             tile.addEventListener('dragover', (e) => e.preventDefault());
+             tile.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const sourceData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                
+                const sourceMatch = state.tournamentStructure[sourceData.roundIndex][sourceData.matchIndex];
+                const sourceParticipant = sourceMatch[sourceData.playerKey];
+                
+                const targetMatch = state.tournamentStructure[roundIndex][matchIndex];
+                const targetParticipant = targetMatch[playerKey];
+
+                const sourceListIndex = state.participants.findIndex(p => p.id === sourceParticipant.id);
+                const targetListIndex = state.participants.findIndex(p => p.id === targetParticipant.id);
+
+                if (sourceListIndex > -1 && targetListIndex > -1) {
+                    [state.participants[sourceListIndex], state.participants[targetListIndex]] = [state.participants[targetListIndex], state.participants[sourceListIndex]];
+                }
+                
+                generateTournament();
+                renderTournament();
+             });
+        }
+
+        return tile;
+    }
+
+    function propagateWinner(roundIndex, matchIndex) {
+        const winner = state.tournamentStructure[roundIndex][matchIndex].winner;
+        if (!winner || roundIndex + 1 >= state.tournamentStructure.length) return;
+
+        const nextRoundIndex = roundIndex + 1;
+        const nextMatchIndex = Math.floor(matchIndex / 2);
+        const nextMatch = state.tournamentStructure[nextRoundIndex][nextMatchIndex];
+
+        if (matchIndex % 2 === 0) {
+            nextMatch.player1 = winner;
+        } else {
+            nextMatch.player2 = winner;
+        }
+
+        if ((nextMatch.player1 && !nextMatch.player2) || (!nextMatch.player1 && nextMatch.player2)) {
+             const opponentPrevMatchIndex = matchIndex % 2 === 0 ? matchIndex + 1 : matchIndex - 1;
+             const opponentPrevMatch = state.tournamentStructure[roundIndex][opponentPrevMatchIndex];
+             if (opponentPrevMatch && ((opponentPrevMatch.player1 && !opponentPrevMatch.player2) || (!opponentPrevMatch.player1 && opponentPrevMatch.player2))) {
+                 return;
+             }
+        }
+    }
+    
+    function clearFutureWinners(roundIndex, matchIndex) {
+        const match = state.tournamentStructure[roundIndex][matchIndex];
+        if(!match.winner) return;
+
+        match.winner = null;
+
+        if (roundIndex + 1 < state.tournamentStructure.length) {
+            const nextRound = state.tournamentStructure[roundIndex + 1];
+            const nextMatchIndex = Math.floor(matchIndex / 2);
+            const nextMatch = nextRound[nextMatchIndex];
+
+            if (matchIndex % 2 === 0) {
+                nextMatch.player1 = null;
+            } else {
+                nextMatch.player2 = null;
+            }
+            
+            if(nextMatch.winner) {
+                clearFutureWinners(roundIndex + 1, nextMatchIndex);
+            }
+        }
+    }
+
+    function handleBackgroundDrop(e) {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                state.settings.bgImage = event.target.result;
+                updateCSSVariables();
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function setupSettingListeners() {
+        const settingsToUpdate = {
+            'tournament-layout': (v) => state.settings.tournamentLayout = v,
+            'tile-width': (v) => state.settings.tileWidth = parseInt(v),
+            'tile-height': (v) => state.settings.tileHeight = parseInt(v),
+            'tile-bg-color': (v) => state.settings.tileBgColor = v,
+            'tile-image-display': (v) => state.settings.tileImageDisplayMode = v,
+            'tile-border-width': (v) => state.settings.tileBorderWidth = parseInt(v),
+            'tile-border-color': (v) => state.settings.tileBorderColor = v,
+            'tile-border-radius': (v) => state.settings.tileBorderRadius = parseInt(v),
+            'font-size': (v) => state.settings.fontSize = parseInt(v),
+            'font-family': (v) => state.settings.fontFamily = v,
+            'bg-opacity': (v) => state.settings.bgOpacity = parseFloat(v),
+            'line-width': (v) => state.settings.lineWidth = parseInt(v),
+            'line-color': (v) => state.settings.lineColor = v,
+            'round-gap': (v) => state.settings.roundGap = parseInt(v),
+            'vertical-gap': (v) => state.settings.verticalGap = parseInt(v),
+            'zoom-slider': (v) => {
+                state.settings.zoom = parseFloat(v);
+                const wrapper = document.getElementById('tournament-wrapper');
+                if (wrapper) {
+                    wrapper.style.transform = `scale(${state.settings.zoom})`;
+                }
+            },
+        };
+        Object.keys(settingsToUpdate).forEach(id => {
+            const element = document.getElementById(id);
+            element.addEventListener('input', (e) => {
+                settingsToUpdate[id](e.target.value);
+                updateCSSVariables();
+                saveState();
+                 if (state.currentView === 'participant-field') {
+                    renderParticipantList();
+                } else if(id !== 'tournament-layout') { // Avoid re-rendering tournament for layout change from settings
+                    renderTournament();
+                }
+            });
+        });
+        
+        const checkboxSettings = {
+            'font-bold': (c) => state.settings.fontWeight = c ? 700 : 400,
+            'font-italic': (c) => state.settings.fontStyle = c ? 'italic' : 'normal',
+            'text-shadow': (c) => state.settings.textShadow = c ? '1px 1px 2px black' : 'none',
+        };
+        Object.keys(checkboxSettings).forEach(id => {
+            document.getElementById(id).addEventListener('change', (e) => {
+                checkboxSettings[id](e.target.checked);
+                updateCSSVariables();
+                saveState();
+            });
+        });
+    }
+
+    function applySettingsToDOM() {
+        document.getElementById('tournament-layout').value = state.settings.tournamentLayout;
+        document.getElementById('tile-width').value = state.settings.tileWidth;
+        document.getElementById('tile-height').value = state.settings.tileHeight;
+        document.getElementById('tile-bg-color').value = state.settings.tileBgColor;
+        document.getElementById('tile-image-display').value = state.settings.tileImageDisplayMode;
+        document.getElementById('tile-border-width').value = state.settings.tileBorderWidth;
+        document.getElementById('tile-border-color').value = state.settings.tileBorderColor;
+        document.getElementById('tile-border-radius').value = state.settings.tileBorderRadius;
+        document.getElementById('font-size').value = state.settings.fontSize;
+        document.getElementById('font-family').value = state.settings.fontFamily;
+        document.getElementById('font-bold').checked = state.settings.fontWeight == 700;
+        document.getElementById('font-italic').checked = state.settings.fontStyle === 'italic';
+        document.getElementById('text-shadow').checked = state.settings.textShadow !== 'none';
+        document.getElementById('bg-opacity').value = state.settings.bgOpacity;
+        document.getElementById('line-width').value = state.settings.lineWidth;
+        document.getElementById('line-color').value = state.settings.lineColor;
+        document.getElementById('round-gap').value = state.settings.roundGap;
+        document.getElementById('vertical-gap').value = state.settings.verticalGap;
+        document.getElementById('zoom-slider').value = state.settings.zoom;
+    }
+
+    function updateCSSVariables() {
+        const r = document.documentElement;
+        r.style.setProperty('--tile-width', `${state.settings.tileWidth}px`);
+        r.style.setProperty('--tile-height', `${state.settings.tileHeight}px`);
+        r.style.setProperty('--tile-bg-color', state.settings.tileBgColor);
+        r.style.setProperty('--tile-border-width', `${state.settings.tileBorderWidth}px`);
+        r.style.setProperty('--tile-border-color', state.settings.tileBorderColor);
+        r.style.setProperty('--tile-border-radius', `${state.settings.tileBorderRadius}px`);
+        r.style.setProperty('--font-size', `${state.settings.fontSize}px`);
+        r.style.setProperty('--font-family', state.settings.fontFamily);
+        r.style.setProperty('--font-weight', state.settings.fontWeight);
+        r.style.setProperty('--font-style', state.settings.fontStyle);
+        r.style.setProperty('--text-shadow', state.settings.textShadow);
+        r.style.setProperty('--line-width', `${state.settings.lineWidth}px`);
+        r.style.setProperty('--line-color', state.settings.lineColor);
+        r.style.setProperty('--round-gap', `${state.settings.roundGap}px`);
+        
+        r.style.setProperty('--bg-opacity', state.settings.bgOpacity);
+        r.style.setProperty('--tournament-bg-image', state.settings.bgImage ? `url(${state.settings.bgImage})` : 'none');
+    }
+
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    }
+    
+     // --- モーダル ---
+    function closeModal() {
+        modalContainer.innerHTML = '';
+    }
+
+    function showHelpModal() {
+        const modal = document.createElement('div');
+        modal.id = 'help-modal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2 class="text-2xl mb-4" data-lang="help_modal_title">${t('help_modal_title')}</h2>
+                <div class="text-sm space-y-2">
+                    <p><strong data-lang="help_participants_title">${t('help_participants_title')}</strong></p>
+                    <ul class="list-disc list-inside">
+                        <li data-lang="help_participants_1">${t('help_participants_1')}</li>
+                        <li data-lang="help_participants_2">${t('help_participants_2')}</li>
+                        <li data-lang="help_participants_3">${t('help_participants_3')}</li>
+                        <li data-lang="help_participants_4">${t('help_participants_4')}</li>
+                    </ul>
+                    <p><strong data-lang="help_tournament_title">${t('help_tournament_title')}</strong></p>
+                     <ul class="list-disc list-inside">
+                        <li data-lang="help_tournament_1">${t('help_tournament_1')}</li>
+                        <li data-lang="help_tournament_2">${t('help_tournament_2')}</li>
+                        <li data-lang="help_tournament_3">${t('help_tournament_3')}</li>
+                        <li data-lang="help_tournament_4">${t('help_tournament_4')}</li>
+                    </ul>
+                </div>
+                <button id="close-help-btn" class="mt-6 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" data-lang="close">${t('close')}</button>
+            </div>
+        `;
+        modalContainer.appendChild(modal);
+        modal.querySelector('#close-help-btn').addEventListener('click', closeModal);
+    }
+    
+    function showExportModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2 class="text-2xl mb-4" data-lang="export_modal_title">${t('export_modal_title')}</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label for="exportFileName" class="block text-sm font-medium" data-lang="file_name">${t('file_name')}</label>
+                        <input type="text" id="exportFileName" placeholder="tournament" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="exportFormat" class="block text-sm font-medium" data-lang="export_format">${t('export_format')}</label>
+                        <select id="exportFormat" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="png">PNG</option>
+                            <option value="jpeg">JPEG</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-2">
+                         <button id="cancel-export-btn" class="px-4 py-2 bg-gray-600 rounded-md hover:bg-gray-500" data-lang="cancel">${t('cancel')}</button>
+                        <button id="download-image-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-500" data-lang="export_button">${t('export_button')}</button>
+                    </div>
+                </div>
+            </div>`;
+
+        modal.querySelector('#download-image-btn').addEventListener('click', exportImage);
+        modal.querySelector('#cancel-export-btn').addEventListener('click', closeModal);
+        modalContainer.appendChild(modal);
+    }
+    
+    function exportImage() {
+        const tournamentArea = document.getElementById('tournament-field');
+        if (!tournamentArea || tournamentArea.classList.contains('hidden')) {
+            alert('トーナメント表が表示されていません。');
+            return;
+        }
+        
+        const fileName = document.getElementById('exportFileName').value.trim() || 'tournament';
+        const format = document.getElementById('exportFormat').value;
+
+        const tilesContainer = document.getElementById('tournament-tiles-container');
+        const canvasElement = document.getElementById('tournament-canvas');
+
+        const mergedCanvas = document.createElement('canvas');
+        mergedCanvas.width = canvasElement.width;
+        mergedCanvas.height = canvasElement.height;
+        const mergedCtx = mergedCanvas.getContext('2d');
+
+        const fieldStyle = window.getComputedStyle(tournamentArea, '::before');
+        const bgImage = fieldStyle.backgroundImage;
+        const bgOpacity = fieldStyle.opacity;
+
+        const drawFinal = () => {
+            mergedCtx.drawImage(canvasElement, 0, 0);
+
+            html2canvas(tilesContainer, {
+                 backgroundColor: null, 
+                 canvas: mergedCtx, 
+                 useCORS: true,
+            }).then(canvas => {
+                const image = canvas.toDataURL(`image/${format}`, format === 'jpeg' ? 0.9 : 1.0);
+                const link = document.createElement('a');
+                link.download = `${fileName}.${format}`;
+                link.href = image;
+                link.click();
+                closeModal();
+            });
+        };
+
+        if (bgImage && bgImage !== 'none') {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = bgImage.replace(/url\((['"])?(.*?)\1\)/gi, '$2');
+            img.onload = () => {
+                mergedCtx.globalAlpha = bgOpacity;
+                mergedCtx.drawImage(img, 0, 0, mergedCanvas.width, mergedCanvas.height);
+                mergedCtx.globalAlpha = 1.0; 
+                drawFinal();
+            };
+            img.onerror = () => {
+                 drawFinal();
+            }
+        } else {
+             drawFinal();
+        }
+    }
+
+});
+</script>
+
+</body>
+</html>
+
